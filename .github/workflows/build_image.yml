@@ -1,109 +1,113 @@
 name: build container image
 on:
-    workflow_call:
-        inputs:
-            image_registry:
-                default: ghcr.io
-                description: To which container image registry the final image should be published
-                type: string
-                required: false
-            image_base_name:
-                description: |
-                    Base name under which the image should be published, e.g. viva-con-agua/vueca.
-                    Defaults to GitHub repository name.
-                type: string
-                required: false
-            image_name_suffix:
-                description: |
-                    Optional suffix to apply to the generated image name
-                type: string
-                required: false
-            image_tag:
-                description: |
-                    Optional tag under which the built image is published.
-                    Defaults to "latest" for branch main and "stage-latest" for branch "stage".
-                type: string
-                required: false
-            build_target:
-                description: |
-                    Optional build target to use during container image creation.
-                    Must be defined in the Dockerfile
-                type: string
-                required: false
-        outputs:
-            image_name:
-                description: Image name (including registry, excluding tag) under which the built image was published
-                value: ${{ inputs.image_registry }}/${{ jobs.build-container-image.outputs.image_name }}
-            image_tag:
-                description: Tag under which the built image was published
-                value: ${{ jobs.build-container-image.outputs.image_tag }}
-            image_digest:
-                description: Digest of the built image
-                value: ${{ jobs.build-container-image.outputs.image_digest }}
+  workflow_call:
+    inputs:
+      image_registry:
+        default: ghcr.io
+        description: To which container image registry the final image should be published
+        type: string
+        required: false
+      image_base_name:
+        description: |
+          Base name under which the image should be published, e.g. viva-con-agua/vueca.
+          Defaults to GitHub repository name.
+        type: string
+        required: false
+      image_name_suffix:
+        description: |
+          Optional suffix to apply to the generated image name
+        type: string
+        required: false
+      image_tag:
+        description: |
+          Optional tag under which the built image is published.
+          Defaults to "latest" for branch main and "stage-latest" for branch "stage".
+        type: string
+        required: false
+      build_target:
+        description: |
+          Optional build target to use during container image creation.
+          Must be defined in the Dockerfile
+        type: string
+        required: false
+    outputs:
+      image_name:
+        description: Image name (including registry, excluding tag) under which the built image was published
+        value: ${{ inputs.image_registry }}/${{ jobs.build-container-image.outputs.image_name }}
+      image_tag:
+        description: Tag under which the built image was published
+        value: ${{ jobs.build-container-image.outputs.image_tag }}
+      image_digest:
+        description: Digest of the built image
+        value: ${{ jobs.build-container-image.outputs.image_digest }}
 
 permissions:
-    contents: read
-    packages: write
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
-    build-container-image:
-        runs-on: ubuntu-latest
-        outputs:
-            image_name: ${{ steps.calc_image_name.outputs.image_name }}
-            image_tag: ${{ steps.calc_image_tag.outputs.image_tag }}
-            image_digest: ${{ steps.build_and_push.outputs.digest }}
-        steps:
-            - uses: docker/login-action@v2
-              with:
-                  registry: ${{ inputs.image_registry }}
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
-            - name: calculate image name
-              id: calc_image_name
-              shell: bash
-              run: |
-                  # apply default from github.repository context
-                  if [[ -z "${{ inputs.image_base_name }}" ]]; then
-                    NAME="${{ github.repository }}"
-                  else
-                    NAME="${{ inputs.image_base_name }}"
-                  fi
-
-                  # add image_name_suffix if one is given
-                  if [[ ! -z "${{ inputs.image_name_suffix }}" ]]; then
-                    NAME="$NAME-${{ inputs.image_name_suffix }}"
-                  fi
-
-                  # ensure name is lowercase: https://www.gnu.org/software/bash/manual/html_node/Shell-Parameter-Expansion.html
-                  echo "::set-output name=image_name::$NAME"
-                  echo "BUILD_IMAGE_NAME=${NAME,,}" >> $GITHUB_ENV
-            - name: calculate image tag
-              id: calc_image_tag
-              shell: bash
-              run: |
-                  if [[ -z "${{ inputs.image_tag }}" ]]; then
-                    if [[ "${{ github.ref_name }}" == "main" ]]; then
-                      echo "::set-output name=image_tag::latest"
-                      echo "BUILD_IMAGE_TAG=latest" >> $GITHUB_ENV
-                    elif [[ "${{ github.ref_name }}" == "feature/ci_cd" ]]; then
-                      echo "::set-output name=image_tag::stage-latest"
-                      echo "BUILD_IMAGE_TAG=stage-latest" >> $GITHUB_ENV
-                    else
-                      echo "Invalid github ref name ${{ github.ref_name }}"
-                      exit 1
-                    fi
-                  else
-                    echo "::set-output name=image_tag::${{ inputs.image_tag }}"
-                    echo "BUILD_IMAGE_TAG=${{ inputs.image_tag }}" >> $GITHUB_ENV
-                  fi
-            - uses: docker/build-push-action@v3
-              id: build_and_push
-              with:
-                  push: true
-                  target: ${{ inputs.build_target }}
-                  tags: |
-                      ${{ inputs.image_registry }}/${{ env.BUILD_IMAGE_NAME }}:${{ env.BUILD_IMAGE_TAG }}
-                  labels: |
-                      org.opencontainers.image.title=${{ github.repository }}
-                      org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-                      org.opencontainers.image.revision=${{ github.sha }}
+  build-container-image:
+    runs-on: ubuntu-latest
+    outputs:
+      image_name: ${{ steps.calc_image_name.outputs.image_name }}
+      image_tag: ${{ steps.calc_image_tag.outputs.image_tag }}
+      image_digest: ${{ steps.build_and_push.outputs.digest }}
+    steps:
+      - uses: docker/login-action@v2
+        with:
+          registry: ${{ inputs.image_registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: calculate image name
+        id: calc_image_name
+        shell: bash
+        run: |
+          # apply default from github.repository context
+          if [[ -z "${{ inputs.image_base_name }}" ]]; then
+            NAME="${{ github.repository }}"
+          else
+            NAME="${{ inputs.image_base_name }}"
+          fi
+          
+          # add image_name_suffix if one is given
+          if [[ ! -z "${{ inputs.image_name_suffix }}" ]]; then
+            NAME="$NAME-${{ inputs.image_name_suffix }}"
+          fi
+          
+          # ensure name is lowercase: https://www.gnu.org/software/bash/manual/html_node/Shell-Parameter-Expansion.html
+          echo "::set-output name=image_name::$NAME"
+          echo "BUILD_IMAGE_NAME=${NAME,,}" >> $GITHUB_ENV
+      - name: calculate image tag
+        id: calc_image_tag
+        shell: bash
+        run: |
+          if [[ -z "${{ inputs.image_tag }}" ]]; then
+            if [[ "${{ github.ref_name }}" == "main" ]]; then
+              echo "::set-output name=image_tag::latest"
+              echo "BUILD_IMAGE_TAG=latest" >> $GITHUB_ENV
+            elif [[ "${{ github.ref_name }}" == "feature/ci_cd" ]]; then
+              echo "::set-output name=image_tag::stage-latest"
+              echo "BUILD_IMAGE_TAG=stage-latest" >> $GITHUB_ENV
+            else
+              echo "Invalid github ref name ${{ github.ref_name }}"
+              exit 1
+            fi
+          else
+            echo "::set-output name=image_tag::${{ inputs.image_tag }}"
+            echo "BUILD_IMAGE_TAG=${{ inputs.image_tag }}" >> $GITHUB_ENV
+          fi
+      - uses: docker/build-push-action@v3
+        id: build_and_push
+        with:
+          push: true
+          target: ${{ inputs.build_target }}
+          tags: |
+            ${{ inputs.image_registry }}/${{ env.BUILD_IMAGE_NAME }}:${{ env.BUILD_IMAGE_TAG }}
+          labels: |
+            org.opencontainers.image.title=${{ github.repository }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
