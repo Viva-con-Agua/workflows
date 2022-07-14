@@ -1,0 +1,110 @@
+on:
+    workflow_call:
+        secrets:
+            ACTIONS_PAT:
+                description: |
+                    Personal Access Token of an account that can write to the deploy_repo.
+                    Is named like this because an organization secret name ACTIONS_PAT exists which should be used.
+                required: true
+
+        inputs:
+            deploy_repo:
+                description: |
+                    Deployment repository that contains the GitOps deployment definitions for the current application.
+                    Defaults to <github_repo_name>-deploy.
+                type: string
+                required: false
+            stage:
+                description: |
+                    Which stage to update the deployed image for.
+                    Defaults to "prod" when currently on branch "main" and "stage" for branch "stage".
+                type: string
+                required: false
+            image_name:
+                description: |
+                    Which image should have its deployed digest updated.
+                    Defaults to ghcr.io/<github_repo_name>
+                type: string
+                required: false
+            new_digest:
+                description: |
+                    The image digest that should be deployed
+                type: string
+                required: true
+
+permissions:
+    contents: write
+
+jobs:
+    update-deployed-image:
+        runs-on: ubuntu-latest
+        steps:
+            - name: setup go build caching
+              uses: actions/cache@v3
+              with:
+                  path: |
+                      ~/.cache/go-build
+                      ~/go/pkg/mod
+                  key: golang-${{ hashFiles('/usr/local/bin/kustomize') }}
+                  restore-keys: golang-
+
+            - name: install kustomize
+              run: GOBIN=/usr/local/bin go install sigs.k8s.io/kustomize/kustomize/v4@latest
+
+            - name: calculate deploy repo name
+              shell: bash
+              run: |
+                  if [[ ! -z "${{ inputs.deploy_repo }}" ]]; then
+                    echo "DEPLOY_DEPLOY_REPO=${{ inputs.deploy_repo }}" >> $GITHUB_ENV
+                  else
+                    echo "DEPLOY_DEPLOY_REPO=${{ github.repository }}-deploy" >> $GITHUB_ENV
+                  fi
+
+            - name: calculate image name
+              shell: bash
+              run: |
+                  # apply default from github.repository context
+                  if [[ -z "${{ inputs.image_name }}" ]]; then
+                    NAME="ghcr.io/${{ github.repository }}"
+                  else
+                    NAME="${{ inputs.image_name }}"
+                  fi
+
+                  # ensure name is lowercase: https://www.gnu.org/software/bash/manual/html_node/Shell-Parameter-Expansion.html
+                  echo "DEPLOY_IMAGE_NAME=${NAME,,}" >> $GITHUB_ENV
+
+            - name: calculate deployment stage
+              shell: bash
+              run: |
+                  if [[ ! -z "${{ inputs.stage }}" ]]; then
+                    echo "DEPLOY_STAGE=${{ inputs.stage }}" >> $GITHUB_ENV
+                  else
+                    if [[ "${{ github.ref_name }}" == "main" ]]; then
+                      echo "DEPLOY_STAGE=prod" >> $GITHUB_ENV
+                    elif [[ "${{ github.ref_name }}" == "feature/ci_cd" ]]; then
+                      echo "DEPLOY_STAGE=stage" >> $GITHUB_ENV
+                    else
+                      echo "Cannot figure out deployment stage from ref name ${{ github.ref_name }}"
+                      exit 1
+                    fi
+                  fi
+
+            - uses: actions/checkout@v3
+              with:
+                  repository: ${{ env.DEPLOY_DEPLOY_REPO }}
+                  token: ${{ secrets.ACTIONS_PAT }}
+
+            - name: update deployed image digest
+              shell: bash
+              run: |
+                  cd ${{ env.DEPLOY_STAGE }}
+                  kustomize edit set image ${{ env.DEPLOY_IMAGE_NAME }}@${{ inputs.new_digest }}
+
+            - uses: stefanzweifel/git-auto-commit-action@v4
+              with:
+                  commit_message: |
+                      Update ${{ env.DEPLOY_STAGE }} image ${{ env.DEPLOY_IMAGE_NAME }}
+
+                      New digest = ${{ inputs.new_digest }}
+                  commit_user_name: vca-bot
+                  commit_user_email: it+github-bot@vivaconagua.org
