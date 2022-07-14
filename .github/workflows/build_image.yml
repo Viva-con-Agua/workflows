@@ -89,7 +89,7 @@ jobs:
             if [[ "${{ github.ref_name }}" == "main" ]]; then
               echo "::set-output name=image_tag::latest"
               echo "BUILD_IMAGE_TAG=latest" >> $GITHUB_ENV
-            elif [[ "${{ github.ref_name }}" == "feature/ci_cd" ]]; then
+            elif [[ "${{ github.ref_name }}" == "stage" ]]; then
               echo "::set-output name=image_tag::stage-latest"
               echo "BUILD_IMAGE_TAG=stage-latest" >> $GITHUB_ENV
             else
