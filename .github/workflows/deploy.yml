@@ -85,6 +85,8 @@ jobs:
               echo "DEPLOY_STAGE=prod" >> $GITHUB_ENV
             elif [[ "${{ github.ref_name }}" == "stage" ]]; then
               echo "DEPLOY_STAGE=stage" >> $GITHUB_ENV
+            elif [[ "${{ github.ref_name }}" == "develop" || "${{ github.ref_name }}" == "dev" ]]; then
+              echo "DEPLOY_STAGE=dev" >> $GITHUB_ENV
             else
               echo "Cannot figure out deployment stage from ref name ${{ github.ref_name }}"
               exit 1

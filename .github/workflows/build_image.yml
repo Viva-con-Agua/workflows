@@ -92,6 +92,9 @@ jobs:
             elif [[ "${{ github.ref_name }}" == "stage" ]]; then
               echo "::set-output name=image_tag::stage-latest"
               echo "BUILD_IMAGE_TAG=stage-latest" >> $GITHUB_ENV
+            elif [[ "${{ github.ref_name }}" == "develop" || "${{ github.ref_name }}" == "dev" ]]; then
+              echo "::set-output name=image_tag::dev-latest"
+              echo "BUILD_IMAGE_TAG=stage-latest" >> $GITHUB_ENV    
             else
               echo "Invalid github ref name ${{ github.ref_name }}"
               exit 1
