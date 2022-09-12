@@ -1,7 +1,5 @@
 name: main
-on:
-  - push
-  - workflow_call
+on: [ workflow_call ]
 
 jobs:
   check-pre-commit:
